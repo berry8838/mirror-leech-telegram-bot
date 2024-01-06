@@ -48,6 +48,7 @@ class Clone(TaskListener):
         _=None,
         __=None,
         ___=None,
+        ____=None,
         bulk=None,
         multiTag=None,
         options="",
@@ -163,8 +164,8 @@ class Clone(TaskListener):
             LOGGER.info(f"Cloning Done: {self.name}")
         elif is_rclone_path(self.link):
             if self.link.startswith("mrcc:"):
-                self.link = self.link.lstrip("mrcc:")
-                self.upDest = self.upDest.lstrip("mrcc:")
+                self.link = self.link.replace("mrcc:", "", 1)
+                self.upDest = self.upDest.replace("mrcc:", "", 1)
                 config_path = f"rclone/{self.user_id}.conf"
             else:
                 config_path = "rclone.conf"
@@ -172,8 +173,17 @@ class Clone(TaskListener):
             remote, src_path = self.link.split(":", 1)
             src_path = src_path.strip("/")
 
-            cmd = f'rclone lsjson --fast-list --stat --no-modtime --config {config_path} "{remote}:{src_path}"'
-            res = await cmd_exec(cmd, shell=True)
+            cmd = [
+                "rclone",
+                "lsjson",
+                "--fast-list",
+                "--stat",
+                "--no-modtime",
+                "--config",
+                config_path,
+                f"{remote}:{src_path}",
+            ]
+            res = await cmd_exec(cmd)
             if res[2] != 0:
                 if res[2] != -9:
                     msg = f"Error: While getting rclone stat. Path: {remote}:{src_path}. Stderr: {res[1][:4000]}"
@@ -185,6 +195,7 @@ class Clone(TaskListener):
                 self.upDest += (
                     self.name if self.upDest.endswith(":") else f"/{self.name}"
                 )
+
                 mime_type = "Folder"
             else:
                 self.name = src_path.rsplit("/", 1)[-1]
@@ -204,18 +215,42 @@ class Clone(TaskListener):
             flink, destination = await RCTransfer.clone(
                 config_path, remote, src_path, mime_type
             )
-            if not flink:
+            if not destination:
                 return
             LOGGER.info(f"Cloning Done: {self.name}")
-            cmd1 = f'rclone lsf --fast-list -R --files-only --config {config_path} "{destination}"'
-            cmd2 = f'rclone lsf --fast-list -R --dirs-only --config {config_path} "{destination}"'
-            cmd3 = (
-                f'rclone size --fast-list --json --config {config_path} "{destination}"'
-            )
+            cmd1 = [
+                "rclone",
+                "lsf",
+                "--fast-list",
+                "-R",
+                "--files-only",
+                "--config",
+                config_path,
+                destination,
+            ]
+            cmd2 = [
+                "rclone",
+                "lsf",
+                "--fast-list",
+                "-R",
+                "--dirs-only",
+                "--config",
+                config_path,
+                destination,
+            ]
+            cmd3 = [
+                "rclone",
+                "size",
+                "--fast-list",
+                "--json",
+                "--config",
+                config_path,
+                destination,
+            ]
             res1, res2, res3 = await gather(
-                cmd_exec(cmd1, shell=True),
-                cmd_exec(cmd2, shell=True),
-                cmd_exec(cmd3, shell=True),
+                cmd_exec(cmd1),
+                cmd_exec(cmd2),
+                cmd_exec(cmd3),
             )
             if res1[2] != res2[2] != res3[2] != 0:
                 if res1[2] == -9:
@@ -235,9 +270,7 @@ class Clone(TaskListener):
                     flink, size, files, folders, mime_type, destination
                 )
         else:
-            await sendMessage(
-                self.message, "Open this link for usage help!", COMMAND_USAGE["clone"]
-            )
+            await sendMessage(self.message, CLONE_HELP_MESSAGE)
 
 
 async def clone(client, message):

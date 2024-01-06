@@ -9,7 +9,7 @@ from bot import (
     task_dict,
     botStartTime,
     DOWNLOAD_DIR,
-    Interval,
+    Intervals,
     bot,
 )
 from bot.helper.telegram_helper.filters import CustomFilters
@@ -37,7 +37,7 @@ async def mirror_status(_, message):
     if count == 0:
         currentTime = get_readable_time(time() - botStartTime)
         free = get_readable_file_size(disk_usage(DOWNLOAD_DIR).free)
-        msg = "No Active Tasks!\n___________________________"
+        msg = f"No Active Tasks!\nEach user can get status for his tasks by me or user_id after cmd: /{BotCommands.StatusCommand} me"
         msg += (
             f"\n<b>CPU:</b> {cpu_percent()}% | <b>FREE:</b> {free}"
             f"\n<b>RAM:</b> {virtual_memory().percent}% | <b>UPTIME:</b> {currentTime}"
@@ -51,9 +51,9 @@ async def mirror_status(_, message):
         else:
             user_id = 0
             sid = message.chat.id
-            if obj := Interval.get(sid):
+            if obj := Intervals["status"].get(sid):
                 obj.cancel()
-                del Interval[sid]
+                del Intervals["status"][sid]
         await sendStatusMessage(message, user_id)
         await deleteMessage(message)
 
@@ -101,34 +101,34 @@ async def status_pages(_, query):
         seed_speed = 0
         async with task_dict_lock:
             for download in task_dict.values():
-                tstatus = download.status()
-                if tstatus == MirrorStatus.STATUS_DOWNLOADING:
-                    tasks["Download"] += 1
-                    dl_speed += speed_string_to_bytes(download.speed())
-                elif tstatus == MirrorStatus.STATUS_UPLOADING:
-                    tasks["Upload"] += 1
-                    up_speed += speed_string_to_bytes(download.speed())
-                elif tstatus == MirrorStatus.STATUS_SEEDING:
-                    tasks["Seed"] += 1
-                    seed_speed += speed_string_to_bytes(download.seed_speed())
-                elif tstatus == MirrorStatus.STATUS_ARCHIVING:
-                    tasks["Archive"] += 1
-                elif tstatus == MirrorStatus.STATUS_EXTRACTING:
-                    tasks["Extract"] += 1
-                elif tstatus == MirrorStatus.STATUS_SPLITTING:
-                    tasks["Split"] += 1
-                elif tstatus == MirrorStatus.STATUS_QUEUEDL:
-                    tasks["QueueDl"] += 1
-                elif tstatus == MirrorStatus.STATUS_QUEUEUP:
-                    tasks["QueueUp"] += 1
-                elif tstatus == MirrorStatus.STATUS_CLONING:
-                    tasks["Clone"] += 1
-                elif tstatus == MirrorStatus.STATUS_CHECKING:
-                    tasks["CheckUp"] += 1
-                elif tstatus == MirrorStatus.STATUS_PAUSED:
-                    tasks["Pause"] += 1
-                elif tstatus == MirrorStatus.STATUS_SAMVID:
-                    tasks["SamVid"] += 1
+                match download.status():
+                    case MirrorStatus.STATUS_DOWNLOADING:
+                        tasks["Download"] += 1
+                        dl_speed += speed_string_to_bytes(download.speed())
+                    case MirrorStatus.STATUS_UPLOADING:
+                        tasks["Upload"] += 1
+                        up_speed += speed_string_to_bytes(download.speed())
+                    case MirrorStatus.STATUS_SEEDING:
+                        tasks["Seed"] += 1
+                        seed_speed += speed_string_to_bytes(download.seed_speed())
+                    case MirrorStatus.STATUS_ARCHIVING:
+                        tasks["Archive"] += 1
+                    case MirrorStatus.STATUS_EXTRACTING:
+                        tasks["Extract"] += 1
+                    case MirrorStatus.STATUS_SPLITTING:
+                        tasks["Split"] += 1
+                    case MirrorStatus.STATUS_QUEUEDL:
+                        tasks["QueueDl"] += 1
+                    case MirrorStatus.STATUS_QUEUEUP:
+                        tasks["QueueUp"] += 1
+                    case MirrorStatus.STATUS_CLONING:
+                        tasks["Clone"] += 1
+                    case MirrorStatus.STATUS_CHECKING:
+                        tasks["CheckUp"] += 1
+                    case MirrorStatus.STATUS_PAUSED:
+                        tasks["Pause"] += 1
+                    case MirrorStatus.STATUS_SAMVID:
+                        tasks["SamVid"] += 1
 
         msg = f"""DL: {tasks['Download']} | UP: {tasks['Upload']} | SD: {tasks['Seed']} | AR: {tasks['Archive']}
 EX: {tasks['Extract']} | SP: {tasks['Split']} | QD: {tasks['QueueDl']} | QU: {tasks['QueueUp']}
@@ -138,7 +138,7 @@ ODLS: {get_readable_file_size(dl_speed)}/s
 OULS: {get_readable_file_size(up_speed)}/s
 OSDS: {get_readable_file_size(seed_speed)}/s
 """
-        await query.answer(msg, show_alert=True)
+        await query.answer(msg, show_alert=True, cache_time=30)
 
 
 bot.add_handler(

@@ -1,5 +1,5 @@
 from logging import getLogger
-from os import path as ospath, listdir, remove as osremove
+from os import path as ospath, listdir, remove
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 from tenacity import (
@@ -30,13 +30,13 @@ class gdUpload(GoogleDriveHelper):
     def user_setting(self):
         if self.listener.upDest.startswith("mtp:"):
             self.token_path = f"tokens/{self.listener.user_id}.pickle"
-            self.listener.upDest = self.listener.upDest.lstrip("mtp:")
+            self.listener.upDest = self.listener.upDest.replace("mtp:", "", 1)
             self.use_sa = False
         elif self.listener.upDest.startswith("tp:"):
-            self.listener.upDest = self.listener.upDest.lstrip("tp:")
+            self.listener.upDest = self.listener.upDest.replace("tp:", "", 1)
             self.use_sa = False
         elif self.listener.upDest.startswith("sa:"):
-            self.listener.upDest = self.listener.upDest.lstrip("sa:")
+            self.listener.upDest = self.listener.upDest.replace("sa:", "", 1)
             self.use_sa = True
 
     def upload(self, size):
@@ -123,7 +123,7 @@ class gdUpload(GoogleDriveHelper):
                 new_id = dest_id
             else:
                 if not self.listener.seed or self.listener.newDir:
-                    osremove(current_file_name)
+                    remove(current_file_name)
                 new_id = "filter"
             if self.is_cancelled:
                 break
@@ -176,7 +176,7 @@ class gdUpload(GoogleDriveHelper):
             try:
                 self.status, response = drive_file.next_chunk()
             except HttpError as err:
-                if err.resp.status in [500, 502, 503, 504] and retries < 10:
+                if err.resp.status in [500, 502, 503, 504, 429] and retries < 10:
                     retries += 1
                     continue
                 if err.resp.get("content-type", "").startswith("application/json"):
@@ -209,7 +209,7 @@ class gdUpload(GoogleDriveHelper):
             return
         if not self.listener.seed or self.listener.newDir:
             try:
-                osremove(file_path)
+                remove(file_path)
             except:
                 pass
         self.file_processed_bytes = 0

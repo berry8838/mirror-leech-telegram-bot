@@ -1,5 +1,5 @@
 from os import path as ospath, cpu_count
-from aiofiles.os import remove as aioremove, path as aiopath, makedirs
+from aiofiles.os import remove, path as aiopath, makedirs
 from time import time
 from re import search as re_search
 from asyncio import create_subprocess_exec, gather
@@ -17,10 +17,10 @@ def getSplitSizeBytes(size):
     size = size.lower()
     if size.endswith("mb"):
         size = size.split("mb")[0]
-        size = float(size) * 1048576
+        size = int(float(size) * 1048576)
     elif size.endswith("gb"):
         size = size.split("gb")[0]
-        size = float(size) * 1073741824
+        size = int(float(size) * 1073741824)
     else:
         size = 0
     return size
@@ -34,7 +34,7 @@ async def createThumb(msg, _id=""):
     photo_dir = await msg.download()
     des_dir = f"{path}{_id}.jpg"
     await sync_to_async(Image.open(photo_dir).convert("RGB").save, des_dir, "JPEG")
-    await aioremove(photo_dir)
+    await remove(photo_dir)
     return des_dir
 
 
@@ -146,8 +146,7 @@ async def get_document_type(path):
 
 
 async def take_ss(video_file, ss_nb) -> list:
-    if ss_nb > 10:
-        ss_nb = 10
+    ss_nb = min(ss_nb, 10)
     duration = (await get_media_info(video_file))[0]
     if duration != 0:
         dirpath, name = video_file.rsplit("/", 1)
@@ -297,7 +296,7 @@ async def split_file(
             elif code != 0:
                 stderr = stderr.decode().strip()
                 try:
-                    await aioremove(out_path)
+                    await remove(out_path)
                 except:
                     pass
                 if multi_streams:
@@ -324,7 +323,7 @@ async def split_file(
             if out_size > listener.maxSplitSize:
                 dif = out_size - listener.maxSplitSize
                 split_size -= dif + 5000000
-                await aioremove(out_path)
+                await remove(out_path)
                 return await split_file(
                     path,
                     size,
@@ -348,7 +347,7 @@ async def split_file(
                 )
                 break
             elif lpd <= 3:
-                await aioremove(out_path)
+                await remove(out_path)
                 break
             start_time += lpd - 3
             i += 1
@@ -432,13 +431,7 @@ async def createSampleVideo(
     code = listener.suproc.returncode
     if code == -9:
         return False
-    elif code != 0:
-        stderr = stderr.decode().strip()
-        LOGGER.error(
-            f"{stderr}. Something went wrong while creating sample video, mostly file is corrupted. Path: {video_file}"
-        )
-        return video_file
-    else:
+    elif code == 0:
         if oneFile:
             newDir, _ = ospath.splitext(video_file)
             await makedirs(newDir, exist_ok=True)
@@ -448,3 +441,9 @@ async def createSampleVideo(
             )
             return newDir
         return True
+    else:
+        stderr = stderr.decode().strip()
+        LOGGER.error(
+            f"{stderr}. Something went wrong while creating sample video, mostly file is corrupted. Path: {video_file}"
+        )
+        return video_file

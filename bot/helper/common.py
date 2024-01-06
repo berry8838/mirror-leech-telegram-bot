@@ -1,4 +1,4 @@
-from aiofiles.os import path as aiopath, remove as aioremove
+from aiofiles.os import path as aiopath, remove
 from asyncio import sleep, create_subprocess_exec
 from asyncio.subprocess import PIPE
 from secrets import token_urlsafe
@@ -75,6 +75,7 @@ class TaskConfig:
         self.multi = 0
         self.isLeech = False
         self.isQbit = False
+        self.isJd = False
         self.isClone = False
         self.isYtDlp = False
         self.equalSplits = False
@@ -130,7 +131,7 @@ class TaskConfig:
             if token_path.startswith("tokens/") and status == "up":
                 self.privateLink = True
             if not await aiopath.exists(token_path):
-                raise ValueError(f"SAccounts or token.pickle: {token_path} not Exists!")
+                raise ValueError(f"NO TOKEN! {token_path} not Exists!")
 
     async def beforeStart(self):
         self.extension_filter = (
@@ -162,28 +163,15 @@ class TaskConfig:
                 or "stop_duplicate" not in self.user_dict
                 and config_dict["STOP_DUPLICATE"]
             )
-            default_upload = self.user_dict.get("default_upload", "")
-            if (
-                not self.upDest
-                and (
-                    default_upload == "rc"
-                    or not default_upload
-                    and config_dict["DEFAULT_UPLOAD"] == "rc"
-                )
-                or self.upDest == "rc"
-            ):
+            default_upload = (
+                self.user_dict.get("default_upload", "")
+                or config_dict["DEFAULT_UPLOAD"]
+            )
+            if (not self.upDest and default_upload == "rc") or self.upDest == "rc":
                 self.upDest = (
                     self.user_dict.get("rclone_path") or config_dict["RCLONE_PATH"]
                 )
-            if (
-                not self.upDest
-                and (
-                    default_upload == "gd"
-                    or not default_upload
-                    and config_dict["DEFAULT_UPLOAD"] == "gd"
-                )
-                or self.upDest == "gd"
-            ):
+            elif (not self.upDest and default_upload == "gd") or self.upDest == "gd":
                 self.upDest = (
                     self.user_dict.get("gdrive_id") or config_dict["GDRIVE_ID"]
                 )
@@ -273,10 +261,10 @@ class TaskConfig:
             )
             if not isinstance(self.upDest, int):
                 if self.upDest.startswith("b:"):
-                    self.upDest = self.upDest.lstrip("b:")
+                    self.upDest = self.upDest.replace("b:", "", 1)
                     self.userTransmission = False
                 elif self.upDest.startswith("u:"):
-                    self.upDest = self.upDest.lstrip("u:")
+                    self.upDest = self.upDest.replace("u:", "", 1)
                     self.userTransmission = IS_PREMIUM_USER
                 if self.upDest.isdigit() or self.upDest.startswith("-"):
                     self.upDest = int(self.upDest)
@@ -354,6 +342,7 @@ class TaskConfig:
             nextmsg,
             self.isQbit,
             self.isLeech,
+            self.isJd,
             self.sameDir,
             self.bulk,
             self.multiTag,
@@ -386,6 +375,7 @@ class TaskConfig:
                 nextmsg,
                 self.isQbit,
                 self.isLeech,
+                self.isJd,
                 self.sameDir,
                 self.bulk,
                 self.multiTag,
@@ -459,7 +449,7 @@ class TaskConfig:
                             if is_archive_split(file_) or is_archive(file_):
                                 del_path = ospath.join(dirpath, file_)
                                 try:
-                                    await aioremove(del_path)
+                                    await remove(del_path)
                                 except:
                                     return False
                 return up_path
@@ -491,7 +481,7 @@ class TaskConfig:
                     LOGGER.info(f"Extracted Path: {up_path}")
                     if not self.seed:
                         try:
-                            await aioremove(dl_path)
+                            await remove(dl_path)
                         except:
                             return False
                     return up_path
@@ -583,12 +573,12 @@ class TaskConfig:
                         if f_size <= self.maxSplitSize:
                             continue
                         try:
-                            await aioremove(f_path)
+                            await remove(f_path)
                         except:
                             return False
                     elif not self.seed or self.newDir:
                         try:
-                            await aioremove(f_path)
+                            await remove(f_path)
                         except:
                             return False
                     else:
@@ -615,10 +605,9 @@ class TaskConfig:
                     if not checked:
                         checked = True
                         LOGGER.info(f"Creating Sample video: {self.name}")
-                    res = await createSampleVideo(
+                    return await createSampleVideo(
                         self, dl_path, sample_duration, part_duration, True
                     )
-                    return res
             else:
                 for dirpath, _, files in await sync_to_async(
                     walk, dl_path, topdown=False
