@@ -47,7 +47,7 @@ async def add_rclone_download(listener, path):
             err = (
                 res1[1]
                 or res2[1]
-                or "Use '/shell cat rlog.txt' to see more information"
+                or "Use <code>/shell cat rlog.txt</code> to see more information"
             )
             msg = f"Error: While getting rclone stat/size. Path: {remote}:{listener.link}. Stderr: {err[:4000]}"
             await listener.onDownloadError(msg)
@@ -57,7 +57,7 @@ async def add_rclone_download(listener, path):
         rsize = loads(res2[0])
     except Exception as err:
         if not str(err):
-            err = "Use '/shell cat rlog.txt' to see more information"
+            err = "Use <code>/shell cat rlog.txt</code> to see more information"
         await listener.onDownloadError(f"RcloneDownload JsonLoad: {err}")
         return
     if rstat["IsDir"]:
@@ -76,26 +76,23 @@ async def add_rclone_download(listener, path):
         await listener.onDownloadError(msg, button)
         return
 
-    if not (listener.forceRun or listener.forceDownload):
-        add_to_queue, event = await check_running_tasks(listener.mid)
-        if add_to_queue:
-            LOGGER.info(f"Added to Queue/Download: {listener.name}")
-            async with task_dict_lock:
-                task_dict[listener.mid] = QueueStatus(listener, gid, "dl")
-            await listener.onDownloadStart()
-            if listener.multi <= 1:
-                await sendStatusMessage(listener.message)
-            await event.wait()
-            if listener.isCancelled:
-                return
-    else:
-        add_to_queue = False
+    add_to_queue, event = await check_running_tasks(listener)
+    if add_to_queue:
+        LOGGER.info(f"Added to Queue/Download: {listener.name}")
+        async with task_dict_lock:
+            task_dict[listener.mid] = QueueStatus(listener, gid, "dl")
+        await listener.onDownloadStart()
+        if listener.multi <= 1:
+            await sendStatusMessage(listener.message)
+        await event.wait()
+        if listener.isCancelled:
+            return
+        async with queue_dict_lock:
+            non_queued_dl.add(listener.mid)
 
     RCTransfer = RcloneTransferHelper(listener)
     async with task_dict_lock:
         task_dict[listener.mid] = RcloneStatus(listener, RCTransfer, gid, "dl")
-    async with queue_dict_lock:
-        non_queued_dl.add(listener.mid)
 
     if add_to_queue:
         LOGGER.info(f"Start Queued Download with rclone: {listener.link}")

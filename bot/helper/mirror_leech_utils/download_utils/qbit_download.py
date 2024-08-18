@@ -1,10 +1,10 @@
 from aiofiles.os import remove, path as aiopath
-from time import time
+from asyncio import sleep
 
 from bot import (
     task_dict,
     task_dict_lock,
-    get_qb_client,
+    qbittorrent_client,
     LOGGER,
     config_dict,
     non_queued_dl,
@@ -40,20 +40,15 @@ def _get_hash_file(fpath):
 
 
 async def add_qb_torrent(listener, path, ratio, seed_time):
-    client = await sync_to_async(get_qb_client)
-    ADD_TIME = time()
     try:
         url = listener.link
         tpath = None
         if await aiopath.exists(listener.link):
             url = None
             tpath = listener.link
-        if not (listener.forceRun or listener.forceDownload):
-            add_to_queue, event = await check_running_tasks(listener.mid)
-        else:
-            add_to_queue = False
+        add_to_queue, event = await check_running_tasks(listener)
         op = await sync_to_async(
-            client.torrents_add,
+            qbittorrent_client.torrents_add,
             url,
             tpath,
             path,
@@ -64,18 +59,17 @@ async def add_qb_torrent(listener, path, ratio, seed_time):
             headers={"user-agent": "Wget/1.12"},
         )
         if op.lower() == "ok.":
-            tor_info = await sync_to_async(client.torrents_info, tag=f"{listener.mid}")
+            tor_info = await sync_to_async(
+                qbittorrent_client.torrents_info, tag=f"{listener.mid}"
+            )
             if len(tor_info) == 0:
                 while True:
                     tor_info = await sync_to_async(
-                        client.torrents_info, tag=f"{listener.mid}"
+                        qbittorrent_client.torrents_info, tag=f"{listener.mid}"
                     )
                     if len(tor_info) > 0:
                         break
-                    elif time() - ADD_TIME >= 120:
-                        msg = "Not added! Check if the link is valid or not. If it's torrent file then report, this happens if torrent file size above 10mb."
-                        await listener.onDownloadError(msg)
-                        return
+                    await sleep(1)
             tor_info = tor_info[0]
             listener.name = tor_info.name
             ext_hash = tor_info.hash
@@ -92,8 +86,6 @@ async def add_qb_torrent(listener, path, ratio, seed_time):
         if add_to_queue:
             LOGGER.info(f"Added to Queue/Download: {tor_info.name} - Hash: {ext_hash}")
         else:
-            async with queue_dict_lock:
-                non_queued_dl.add(listener.mid)
             LOGGER.info(f"QbitDownload started: {tor_info.name} - Hash: {ext_hash}")
 
         await listener.onDownloadStart()
@@ -104,7 +96,7 @@ async def add_qb_torrent(listener, path, ratio, seed_time):
                 meta = await sendMessage(listener.message, metamsg)
                 while True:
                     tor_info = await sync_to_async(
-                        client.torrents_info, tag=f"{listener.mid}"
+                        qbittorrent_client.torrents_info, tag=f"{listener.mid}"
                     )
                     if len(tor_info) == 0:
                         await deleteMessage(meta)
@@ -124,7 +116,9 @@ async def add_qb_torrent(listener, path, ratio, seed_time):
 
             ext_hash = tor_info.hash
             if not add_to_queue:
-                await sync_to_async(client.torrents_pause, torrent_hashes=ext_hash)
+                await sync_to_async(
+                    qbittorrent_client.torrents_pause, torrent_hashes=ext_hash
+                )
             SBUTTONS = bt_selection_buttons(ext_hash)
             msg = "Your download paused. Choose files then press Done Selecting button to start downloading."
             await sendMessage(listener.message, msg, SBUTTONS)
@@ -135,19 +129,19 @@ async def add_qb_torrent(listener, path, ratio, seed_time):
             await event.wait()
             if listener.isCancelled:
                 return
+            async with queue_dict_lock:
+                non_queued_dl.add(listener.mid)
             async with task_dict_lock:
                 task_dict[listener.mid].queued = False
 
-            await sync_to_async(client.torrents_resume, torrent_hashes=ext_hash)
+            await sync_to_async(
+                qbittorrent_client.torrents_resume, torrent_hashes=ext_hash
+            )
             LOGGER.info(
                 f"Start Queued Download from Qbittorrent: {tor_info.name} - Hash: {ext_hash}"
             )
-
-            async with queue_dict_lock:
-                non_queued_dl.add(listener.mid)
     except Exception as e:
         await listener.onDownloadError(f"{e}")
     finally:
-        if await aiopath.exists(listener.link):
+        if tpath and await aiopath.exists(listener.link):
             await remove(listener.link)
-        await sync_to_async(client.auth_log_out)

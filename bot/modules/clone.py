@@ -8,7 +8,6 @@ from bot import LOGGER, task_dict, task_dict_lock, bot
 from bot.helper.ext_utils.bot_utils import (
     new_task,
     sync_to_async,
-    new_task,
     cmd_exec,
     arg_parser,
     COMMAND_USAGE,
@@ -48,6 +47,7 @@ class Clone(TaskListener):
         __=None,
         ___=None,
         ____=None,
+        _____=None,
         bulk=None,
         multiTag=None,
         options="",
@@ -68,7 +68,7 @@ class Clone(TaskListener):
         text = self.message.text.split("\n")
         input_list = text[0].split(" ")
 
-        arg_base = {
+        args = {
             "link": "",
             "-i": 0,
             "-b": False,
@@ -77,7 +77,7 @@ class Clone(TaskListener):
             "-sync": False,
         }
 
-        args = arg_parser(input_list[1:], arg_base)
+        arg_parser(input_list[1:], args)
 
         try:
             self.multi = int(args["-i"])
@@ -112,7 +112,9 @@ class Clone(TaskListener):
         self.run_multi(input_list, "", Clone)
 
         if len(self.link) == 0:
-            await sendMessage(self.message, COMMAND_USAGE["clone"][0], COMMAND_USAGE["clone"][1])
+            await sendMessage(
+                self.message, COMMAND_USAGE["clone"][0], COMMAND_USAGE["clone"][1]
+            )
             return
         LOGGER.info(self.link)
         try:
@@ -288,6 +290,8 @@ async def clone(client, message):
 
 bot.add_handler(
     MessageHandler(
-        clone, filters=command(BotCommands.CloneCommand) & CustomFilters.authorized
+        clone,
+        filters=command(BotCommands.CloneCommand, case_sensitive=True)
+        & CustomFilters.authorized,
     )
 )
