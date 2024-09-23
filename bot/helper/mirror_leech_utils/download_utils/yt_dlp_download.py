@@ -274,7 +274,7 @@ class YoutubeDLHelper:
         if qual.startswith("ba/b"):
             self._listener.name = f"{base_name}{self._ext}"
 
-        if self._listener.is_leech:
+        if self._listener.is_leech and not self._listener.thumbnail_layout:
             self.opts["postprocessors"].append(
                 {
                     "format": "jpg",
@@ -296,7 +296,9 @@ class YoutubeDLHelper:
         ]:
             self.opts["postprocessors"].append(
                 {
-                    "already_have_thumbnail": self._listener.is_leech,
+                    "already_have_thumbnail": bool(
+                        self._listener.is_leech and not self._listener.thumbnail_layout
+                    ),
                     "key": "EmbedThumbnail",
                 }
             )
@@ -355,5 +357,8 @@ class YoutubeDLHelper:
                     self.opts[key].extend(tuple(value))
                 elif isinstance(value, dict):
                     self.opts[key].append(value)
+            elif key == "download_ranges":
+                if isinstance(value, list):
+                    self.opts[key] = lambda info, ytdl: value
             else:
                 self.opts[key] = value
